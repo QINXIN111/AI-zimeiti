@@ -1,0 +1,8 @@
+Generate a social media image based on this description: {description}
+
+Style requirements:
+- Clean, modern design
+- Vibrant colors suitable for mobile viewing
+- No text overlays (text will be added by platform)
+- Aspect ratio optimized for {platform}
+- Professional quality, eye-catching

@@ -1,0 +1,43 @@
+# 自动生成配置模板，复制为 settings.yaml 后填入实际值
+
+# AI 大模型配置
+ai:
+  provider: openai  # openai / claude / qwen / glm
+  api_key: "sk-xxx"
+  base_url: "https://api.openai.com/v1"  # 可替换为代理地址
+  model: "gpt-4o"
+  temperature: 0.7
+
+# 图片生成配置
+image:
+  provider: dall-e  # dall-e / sd / flux
+  api_key: "sk-xxx"
+  base_url: "https://api.openai.com/v1"
+  model: "dall-e-3"
+  size: "1024x1024"
+
+# 发布平台配置
+platforms:
+  xiaohongshu:
+    enabled: true
+    cookies_file: "config/cookies/xiaohongshu.json"
+    headless: true
+  douyin:
+    enabled: true
+    cookies_file: "config/cookies/douyin.json"
+    headless: true
+  wechat:
+    enabled: true
+    cookies_file: "config/cookies/wechat.json"
+    headless: true
+
+# 发布策略
+publish:
+  review_before_publish: true  # 发布前人工审核
+  max_daily_posts: 3           # 每日最大发布数
+  interval_minutes: 60         # 发布间隔（分钟）
+
+# 内容模板
+templates:
+  article_prompt: "templates/article_prompt.txt"
+  image_prompt: "templates/image_prompt.txt"
