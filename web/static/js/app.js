@@ -1,6 +1,5 @@
 /* ==================== 全局状态 ==================== */
 let currentTaskId = null;
-let currentConfig = {};
 let ws = null;
 
 /* ==================== 初始化 ==================== */
@@ -8,13 +7,38 @@ document.addEventListener('DOMContentLoaded', () => {
     loadConfig();
     loadTasks();
     connectWebSocket();
+
+    document.getElementById('aiTemp').addEventListener('input', e => {
+        document.getElementById('aiTempVal').textContent = e.target.value;
+    });
 });
+
+/* ==================== 页面切换 ==================== */
+function switchPage(page) {
+    // 隐藏所有页面
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    // 取消所有 tab 选中
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+    // 显示目标页面
+    document.getElementById(`page-${page}`).classList.add('active');
+    // 高亮 tab
+    event.target.classList.add('active');
+
+    // 切换到设置时加载配置
+    if (page === 'settings') {
+        loadSettings();
+    }
+    // 切换到热点时加载热点
+    if (page === 'hotspot') {
+        loadHotspots();
+    }
+}
 
 /* ==================== WebSocket ==================== */
 function connectWebSocket() {
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/ws`);
-
     ws.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         switch (msg.type) {
@@ -24,68 +48,237 @@ function connectWebSocket() {
             case 'task_update':
                 handleTaskUpdate(msg.task);
                 break;
-            case 'config_updated':
-                loadConfig();
-                addLog('✅ 配置已更新', 'success');
-                break;
         }
     };
+    ws.onclose = () => setTimeout(connectWebSocket, 3000);
+}
 
-    ws.onclose = () => {
-        setTimeout(connectWebSocket, 3000);
-    };
+/* ==================== 热点采集 ==================== */
+async function loadHotspots() {
+    const container = document.getElementById('hotspotList');
+    container.innerHTML = '<div class="empty-state">⏳ 加载中...</div>';
+
+    try {
+        const source = document.getElementById('hotspotSource').value;
+        const res = await fetch(`/api/hotspots?sources=${source}`);
+        const data = await res.json();
+        const hotspots = data.hotspots || [];
+
+        if (hotspots.length === 0) {
+            container.innerHTML = '<div class="empty-state">暂无热点数据</div>';
+            return;
+        }
+
+        container.innerHTML = hotspots.map((h, i) => `
+            <div class="hotspot-item" onclick="useHotspot('${h.title.replace(/'/g, "\\'")}')">
+                <span class="hotspot-rank">${i + 1}</span>
+                <div class="hotspot-info">
+                    <span class="hotspot-title">${h.title}</span>
+                    <span class="hotspot-meta">${h.source} · ${h.category || '综合'} · 🔥${h.heat}</span>
+                </div>
+            </div>
+        `).join('');
+
+        addLog(`🔥 加载 ${hotspots.length} 条热点`, 'success');
+    } catch (e) {
+        container.innerHTML = '<div class="empty-state">加载失败: ' + e.message + '</div>';
+    }
+}
+
+function useHotspot(title) {
+    // 切换到创作页面并填入主题
+    switchPage('create');
+    document.querySelectorAll('.tab-btn')[1].classList.add('active');
+    document.getElementById('topicInput').value = title;
+    addLog(`📌 已填入热点: ${title}`, 'info');
+}
+
+/* ==================== 分类资讯 ==================== */
+async function loadNews(category) {
+    const container = document.getElementById(`news-${category}`);
+    container.innerHTML = '<div class="empty-state">⏳ 加载中...</div>';
+
+    // 用热点采集器获取对应分类
+    try {
+        const res = await fetch(`/api/hotspots?sources=baidu,toutiao`);
+        const data = await res.json();
+        const hotspots = (data.hotspots || []).filter(h => {
+            const cat = (h.category || '').toLowerCase();
+            if (category === 'ai') return cat.includes('科技') || cat.includes('ai') || cat.includes('人工');
+            if (category === 'finance') return cat.includes('财经') || cat.includes('金融') || cat.includes('股');
+            if (category === 'tech') return cat.includes('科技') || cat.includes('互联网') || cat.includes('数码');
+            return true;
+        });
+
+        if (hotspots.length === 0) {
+            // 不过滤，直接显示前5条
+            const items = (data.hotspots || []).slice(0, 5);
+            renderNews(container, items, category);
+        } else {
+            renderNews(container, hotspots.slice(0, 5), category);
+        }
+    } catch (e) {
+        container.innerHTML = '<div class="empty-state">加载失败</div>';
+    }
+}
+
+function renderNews(container, items, category) {
+    if (items.length === 0) {
+        container.innerHTML = '<div class="empty-state">暂无数据</div>';
+        return;
+    }
+    container.innerHTML = items.map(h => `
+        <div class="news-item" onclick="useHotspot('${h.title.replace(/'/g, "\\'")}')">
+            <span class="news-title">${h.title}</span>
+            <span class="news-meta">${h.source} · ${h.heat}</span>
+        </div>
+    `).join('');
+}
+
+/* ==================== 高级选项 ==================== */
+function toggleAdvanced() {
+    const panel = document.getElementById('advancedPanel');
+    const arrow = document.getElementById('advancedArrow');
+    panel.classList.toggle('hidden');
+    arrow.textContent = panel.classList.contains('hidden') ? '▼' : '▲';
 }
 
 /* ==================== API 调用 ==================== */
 async function loadConfig() {
     const res = await fetch('/api/config');
     const config = await res.json();
-    currentConfig = config;
 
-    // 更新平台状态（顶部）
     const container = document.getElementById('platformStatus');
     container.innerHTML = '';
-    for (const [name, info] of Object.entries(config.platforms)) {
-        const names = { xiaohongshu: '📕 小红书', douyin: '🎵 抖音', wechat: '💚 公众号' };
+    for (const [name, info] of Object.entries(config.platforms || {})) {
+        const names = { xiaohongshu: '📕', douyin: '🎵', wechat: '💚', kuaishou: '🔥', bilibili: '📺', wechat_video: '📱' };
         const cls = info.logged_in ? 'logged-in' : 'not-logged';
-        const text = info.logged_in ? '已登录' : '未登录';
-        container.innerHTML += `<span class="platform-badge ${cls}">${names[name] || name} · ${text}</span>`;
+        container.innerHTML += `<span class="platform-badge ${cls}">${names[name] || ''} ${name.slice(0,4)}</span>`;
+    }
+}
+
+async function loadSettings() {
+    const res = await fetch('/api/config');
+    const data = await res.json();
+
+    // AI 配置
+    const ai = data.ai || {};
+    document.getElementById('aiProvider').value = ai.provider || 'openai';
+    document.getElementById('aiBaseUrl').value = ai.base_url || '';
+    document.getElementById('aiModel').value = ai.model || 'gpt-4o';
+    document.getElementById('aiTemp').value = ai.temperature || 0.7;
+    document.getElementById('aiTempVal').textContent = ai.temperature || 0.7;
+
+    // 图片配置
+    const img = data.image || {};
+    document.getElementById('imgProvider').value = img.provider || 'dall-e';
+    document.getElementById('imgBaseUrl').value = img.base_url || '';
+    document.getElementById('imgSize').value = img.size || '1024x1024';
+
+    // 平台配置
+    const pContainer = document.getElementById('platformSettings');
+    pContainer.innerHTML = '';
+    const names = { xiaohongshu: '📕 小红书', douyin: '🎵 抖音', wechat: '💚 公众号', kuaishou: '🔥 快手', bilibili: '📺 B站', wechat_video: '📱 视频号' };
+    for (const [name, cfg] of Object.entries(data.platforms || {})) {
+        const statusCls = cfg.logged_in ? 'logged-in' : 'not-logged';
+        const statusText = cfg.logged_in ? '✅ 已登录' : '⚠️ 未登录';
+        pContainer.innerHTML += `
+            <div class="platform-config">
+                <div class="platform-header">
+                    <span>${names[name] || name}</span>
+                    <div class="platform-header-right">
+                        <span class="platform-badge ${statusCls}">${statusText}</span>
+                        <button class="btn btn-sm" onclick="loginPlatform('${name}')">🔐 登录</button>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
-    // 更新设置面板中的平台状态
-    if (config.platforms) {
-        for (const [name, info] of Object.entries(config.platforms)) {
-            const statusEl = document.getElementById(`platform-${name}-status`);
-            if (statusEl) {
-                statusEl.textContent = info.logged_in ? '✅ 已登录' : '❌ 未登录';
-                statusEl.className = `platform-login-status ${info.logged_in ? 'logged' : 'not-logged'}`;
-            }
+    // 发布策略
+    const pub = data.publish || {};
+    document.getElementById('reviewBefore').checked = pub.review_before_publish !== false;
+    document.getElementById('maxDaily').value = pub.max_daily_posts || 3;
+    document.getElementById('intervalMin').value = pub.interval_minutes || 60;
+}
+
+async function saveSettings() {
+    const settings = {
+        ai: {
+            provider: document.getElementById('aiProvider').value,
+            api_key: document.getElementById('aiApiKey').value,
+            base_url: document.getElementById('aiBaseUrl').value,
+            model: document.getElementById('aiModel').value,
+            temperature: parseFloat(document.getElementById('aiTemp').value),
+        },
+        image: {
+            provider: document.getElementById('imgProvider').value,
+            api_key: document.getElementById('imgApiKey').value,
+            base_url: document.getElementById('imgBaseUrl').value,
+            size: document.getElementById('imgSize').value,
+        },
+        publish: {
+            review_before_publish: document.getElementById('reviewBefore').checked,
+            max_daily_posts: parseInt(document.getElementById('maxDaily').value),
+            interval_minutes: parseInt(document.getElementById('intervalMin').value),
+        },
+    };
+
+    const res = await fetch('/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings),
+    });
+    const data = await res.json();
+    if (data.status === 'success') {
+        addLog('✅ 设置已保存', 'success');
+    } else {
+        addLog('❌ 保存失败: ' + (data.error || '未知错误'), 'error');
+    }
+}
+
+async function testConnection() {
+    const apiKey = document.getElementById('aiApiKey').value;
+    const baseUrl = document.getElementById('aiBaseUrl').value;
+    const model = document.getElementById('aiModel').value;
+
+    addLog('🔌 正在测试连接...', 'info');
+
+    try {
+        const res = await fetch('/api/test-ai', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: apiKey, base_url: baseUrl, model }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            addLog(`✅ 连接成功: ${data.message}`, 'success');
+        } else {
+            addLog(`❌ 连接失败: ${data.message}`, 'error');
         }
-    }
-
-    // 填充 AI 配置
-    if (config.ai) {
-        document.getElementById('aiProvider').value = config.ai.provider || 'openai';
-        document.getElementById('aiApiKey').value = config.ai.api_key || '';
-        document.getElementById('aiBaseUrl').value = config.ai.base_url || '';
-        document.getElementById('aiModel').value = config.ai.model || '';
-        document.getElementById('aiTemperature').value = config.ai.temperature || 0.7;
-    }
-
-    // 填充发布策略
-    if (config.publish) {
-        document.getElementById('reviewBeforePublish').checked = config.publish.review_before_publish !== false;
-        document.getElementById('maxDailyPosts').value = config.publish.max_daily_posts || 3;
-        document.getElementById('intervalMinutes').value = config.publish.interval_minutes || 60;
+    } catch (e) {
+        addLog(`❌ 测试失败: ${e.message}`, 'error');
     }
 }
 
-async function loadTasks() {
-    const res = await fetch('/api/tasks');
-    const tasks = await res.json();
-    renderTaskList(tasks);
+async function loginPlatform(platform) {
+    addLog(`🔐 正在启动 ${platform} 登录...`, 'info');
+    try {
+        const res = await fetch(`/api/platform/${platform}/login`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'waiting') {
+            addLog(`📱 请在浏览器中扫码登录 ${platform}`, 'info');
+        } else if (data.status === 'success') {
+            addLog(`✅ ${platform} 登录成功`, 'success');
+            loadConfig();
+            loadSettings();
+        }
+    } catch (e) {
+        addLog(`❌ 登录失败: ${e.message}`, 'error');
+    }
 }
 
+/* ==================== 任务管理 ==================== */
 async function startTask() {
     const topic = document.getElementById('topicInput').value.trim();
     if (!topic) {
@@ -93,7 +286,7 @@ async function startTask() {
         return;
     }
 
-    const checkboxes = document.querySelectorAll('.platform-tag input:checked');
+    const checkboxes = document.querySelectorAll('#page-create .platform-tag input:checked');
     const platforms = Array.from(checkboxes).map(cb => cb.value);
     const auto = document.getElementById('autoPublish').checked;
 
@@ -104,20 +297,99 @@ async function startTask() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic, platforms, auto }),
     });
-
     const data = await res.json();
     if (data.error) {
         addLog(`❌ ${data.error}`, 'error');
         return;
     }
-
     currentTaskId = data.task_id;
     addLog(`✅ 任务已创建: #${data.task_id}`, 'success');
     loadTasks();
 }
 
-async function approveTask(taskId, edits) {
-    const res = await fetch(`/api/task/${taskId}/approve`, {
+async function loadTasks() {
+    const res = await fetch('/api/tasks');
+    const tasks = await res.json();
+    renderTaskList(tasks);
+}
+
+function renderTaskList(tasks) {
+    const container = document.getElementById('taskList');
+    if (!tasks.length) {
+        container.innerHTML = '<div class="empty-state">暂无任务</div>';
+        return;
+    }
+    const statusLabels = { generating: '生成中', reviewing: '待审核', publishing: '发布中', done: '已完成', error: '出错' };
+    container.innerHTML = tasks.slice(0, 10).map(task => {
+        const time = task.created_at ? new Date(task.created_at).toLocaleString() : '';
+        const cls = `status-${task.status}`;
+        return `
+            <div class="task-item" onclick="showTaskDetail('${task.id}')">
+                <div class="task-topic">${task.topic}</div>
+                <div class="task-meta">
+                    <span>${time}</span>
+                    <span class="task-status ${cls}">${statusLabels[task.status] || task.status}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function showTaskDetail(taskId) {
+    const res = await fetch(`/api/task/${taskId}`);
+    const task = await res.json();
+    currentTaskId = taskId;
+    if (task.articles && Object.keys(task.articles).length > 0) {
+        showReviewModal(task);
+    }
+}
+
+/* ==================== 审核弹窗 ==================== */
+function showReviewModal(task) {
+    const modal = document.getElementById('reviewModal');
+    const body = document.getElementById('reviewBody');
+    const names = { xiaohongshu: '📕 小红书', douyin: '🎵 抖音', wechat: '💚 公众号', kuaishou: '🔥 快手', bilibili: '📺 B站', wechat_video: '📱 视频号' };
+
+    body.innerHTML = '';
+    for (const [platform, article] of Object.entries(task.articles)) {
+        const tags = (article.tags || []).map(t => `<span class="tag">#${t}</span>`).join('');
+        body.innerHTML += `
+            <div class="review-card" data-platform="${platform}">
+                <h3>${names[platform] || platform}</h3>
+                <div class="form-group">
+                    <label>标题</label>
+                    <input type="text" class="form-input edit-title" value="${article.title || ''}">
+                </div>
+                <div class="form-group">
+                    <label>正文</label>
+                    <textarea class="edit-content" style="min-height:120px">${article.content || ''}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>标签</label>
+                    <div class="style-tags">${tags}</div>
+                </div>
+            </div>
+        `;
+    }
+    modal.classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('reviewModal').classList.add('hidden');
+}
+
+async function approvePublish() {
+    if (!currentTaskId) return;
+    const edits = {};
+    document.querySelectorAll('.review-card').forEach(card => {
+        const platform = card.dataset.platform;
+        edits[platform] = {
+            title: card.querySelector('.edit-title').value,
+            content: card.querySelector('.edit-content').value,
+        };
+    });
+
+    const res = await fetch(`/api/task/${currentTaskId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ edits }),
@@ -129,277 +401,11 @@ async function approveTask(taskId, edits) {
     }
 }
 
-/* ==================== 任务更新处理 ==================== */
-function handleTaskUpdate(task) {
-    // 添加日志
-    const statusTexts = {
-        generating: '✍️ 正在生成内容...',
-        reviewing: '👀 内容待审核',
-        publishing: '📤 正在发布...',
-        done: '✅ 全部完成！',
-        error: `❌ 出错: ${task.error || '未知错误'}`,
-    };
-    if (statusTexts[task.status]) {
-        addLog(statusTexts[task.status], task.status === 'error' ? 'error' : 'info');
-    }
-
-    // 更新任务列表
-    loadTasks();
-
-    // 如果是审核状态，弹出审核窗口
-    if (task.status === 'reviewing' && task.articles) {
-        showReviewModal(task);
-    }
-}
-
-/* ==================== 审核弹窗 ==================== */
-function showReviewModal(task) {
-    const modal = document.getElementById('reviewModal');
-    const body = document.getElementById('reviewBody');
-    const platformNames = { xiaohongshu: '📕 小红书', douyin: '🎵 抖音', wechat: '💚 公众号' };
-
-    body.innerHTML = '';
-    for (const [platform, article] of Object.entries(task.articles)) {
-        const tags = (article.tags || []).map(t => `<span class="review-tag">#${t}</span>`).join('');
-
-        body.innerHTML += `
-            <div class="review-card" data-platform="${platform}">
-                <h3>${platformNames[platform] || platform}</h3>
-                <div class="review-field">
-                    <label>标题</label>
-                    <input type="text" class="edit-title" value="${escapeHtml(article.title || '')}">
-                </div>
-                <div class="review-field">
-                    <label>正文</label>
-                    <textarea class="edit-content">${escapeHtml(article.content || '')}</textarea>
-                </div>
-                <div class="review-field">
-                    <label>标签</label>
-                    <div class="review-tags">${tags}</div>
-                </div>
-                ${task.images && task.images[platform] ? `<div class="review-field"><label>配图</label><img src="${task.images[platform]}" style="max-width:200px;border-radius:8px;margin-top:8px;"></div>` : ''}
-            </div>
-        `;
-    }
-
-    modal.classList.remove('hidden');
-    currentTaskId = task.id;
-}
-
-function closeModal() {
-    document.getElementById('reviewModal').classList.add('hidden');
-}
-
-function approvePublish() {
-    if (!currentTaskId) return;
-
-    // 收集编辑修改
-    const edits = {};
-    document.querySelectorAll('.review-card').forEach(card => {
-        const platform = card.dataset.platform;
-        edits[platform] = {
-            title: card.querySelector('.edit-title').value,
-            content: card.querySelector('.edit-content').value,
-        };
-    });
-
-    approveTask(currentTaskId, edits);
-}
-
-/* ==================== 日志 ==================== */
-function addLog(text, type = 'info') {
-    const area = document.getElementById('logArea');
-    const time = new Date().toLocaleTimeString();
-    area.innerHTML += `<div class="log-item log-${type}"><span class="log-time">[${time}]</span>${escapeHtml(text)}</div>`;
-    area.scrollTop = area.scrollHeight;
-}
-
-/* ==================== 任务列表渲染 ==================== */
-function renderTaskList(tasks) {
-    const container = document.getElementById('taskList');
-    if (!tasks.length) {
-        container.innerHTML = '<div class="empty-state">暂无任务</div>';
-        return;
-    }
-
-    const statusLabels = {
-        generating: '生成中',
-        reviewing: '待审核',
-        publishing: '发布中',
-        done: '已完成',
-        error: '出错',
-        cancelled: '已取消',
-    };
-
-    container.innerHTML = tasks.map(task => {
-        const time = task.created_at ? new Date(task.created_at).toLocaleString() : '';
-        const statusCls = `status-${task.status}`;
-        return `
-            <div class="task-item ${task.id === currentTaskId ? 'active' : ''}"
-                 onclick="showTaskDetail('${task.id}')">
-                <div class="task-topic">${escapeHtml(task.topic)}</div>
-                <div class="task-meta">
-                    <span>${time}</span>
-                    <span class="task-status ${statusCls}">${statusLabels[task.status] || task.status}</span>
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
-async function showTaskDetail(taskId) {
-    const res = await fetch(`/api/task/${taskId}`);
-    const task = await res.json();
-    currentTaskId = taskId;
-
-    if (task.articles && Object.keys(task.articles).length > 0) {
-        if (task.status === 'reviewing') {
-            showReviewModal(task);
-        } else {
-            showReviewModal(task);
-        }
-    } else {
-        addLog(`任务 #${taskId}: ${task.topic}`, 'info');
-    }
-}
-
-/* ==================== 工具函数 ==================== */
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-}
-
-/* ==================== 设置面板 ==================== */
-function openSettings() {
-    document.getElementById('settingsModal').classList.remove('hidden');
-    loadConfig();
-}
-
-function closeSettings() {
-    document.getElementById('settingsModal').classList.add('hidden');
-}
-
-function switchTab(tabName) {
-    // 切换标签按钮样式
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tab === tabName);
-    });
-
-    // 切换内容显示
-    document.querySelectorAll('.tab-content').forEach(content => {
-        content.classList.toggle('active', content.id === `tab-${tabName}`);
-    });
-}
-
-async function loginPlatform(platform) {
-    addLog(`🔐 正在启动浏览器登录 ${platform}...`, 'info');
-
-    const res = await fetch(`/api/platform/${platform}/login`, {
-        method: 'POST',
-    });
-
-    const data = await res.json();
-    if (data.error) {
-        addLog(`❌ ${data.error}`, 'error');
-        return;
-    }
-
-    addLog(data.message, 'success');
-
-    // 3秒后刷新平台状态
-    setTimeout(() => {
-        loadConfig();
-    }, 3000);
-}
-
-async function saveSettings() {
-    const config = {
-        ai: {
-            provider: document.getElementById('aiProvider').value,
-            api_key: document.getElementById('aiApiKey').value,
-            base_url: document.getElementById('aiBaseUrl').value,
-            model: document.getElementById('aiModel').value,
-            temperature: parseFloat(document.getElementById('aiTemperature').value),
-        },
-        publish: {
-            review_before_publish: document.getElementById('reviewBeforePublish').checked,
-            max_daily_posts: parseInt(document.getElementById('maxDailyPosts').value),
-            interval_minutes: parseInt(document.getElementById('intervalMinutes').value),
-        },
-    };
-
-    addLog('💾 正在保存配置...', 'info');
-
-    const res = await fetch('/api/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(config),
-    });
-
-    const data = await res.json();
-    if (data.error) {
-        addLog(`❌ ${data.error}`, 'error');
-        return;
-    }
-
-    addLog('✅ 配置保存成功', 'success');
-    closeSettings();
-}
-
-/* ==================== 热点采集 ==================== */
-async function loadHotspots() {
-    const container = document.getElementById('hotspotList');
-    container.innerHTML = '<div class="empty-state">⏳ 加载中...</div>';
-
-    try {
-        const res = await fetch('/api/hotspots');
-        const data = await res.json();
-        const hotspots = data.hotspots || [];
-
-        if (hotspots.length === 0) {
-            container.innerHTML = '<div class="empty-state">暂无热点数据</div>';
-            return;
-        }
-
-        const categoryEmojis = {
-            '娱乐': '🎬', '社会': '📰', '科技': '💻', '财经': '💰',
-            '体育': '⚽', '游戏': '🎮', '汽车': '🚗', '美食': '🍜',
-            '旅游': '✈️', '综合': '📌'
-        };
-
-        container.innerHTML = hotspots.slice(0, 15).map((h, i) => `
-            <div class="hotspot-item" onclick="useHotspot('${h.title.replace(/'/g, "\\'")}')">
-                <span class="hotspot-rank">${i + 1}</span>
-                <div class="hotspot-info">
-                    <span class="hotspot-title">${h.title}</span>
-                    <span class="hotspot-meta">${categoryEmojis[h.category] || '📌'} ${h.source} · 🔥${h.heat}</span>
-                </div>
-            </div>
-        `).join('');
-
-        addLog(`🔥 加载 ${hotspots.length} 条热点`, 'success');
-    } catch (e) {
-        container.innerHTML = '<div class="empty-state">加载失败</div>';
-        addLog(`❌ 热点加载失败: ${e.message}`, 'error');
-    }
-}
-
-function useHotspot(title) {
-    document.getElementById('topicInput').value = title;
-    addLog(`📌 已填入热点: ${title}`, 'info');
-    document.getElementById('topicInput').scrollIntoView({ behavior: 'smooth' });
-}
-
 /* ==================== 文章复刻 ==================== */
 async function cloneArticle() {
     const url = document.getElementById('cloneUrl').value.trim();
     const resultDiv = document.getElementById('cloneResult');
-
-    if (!url) {
-        resultDiv.innerHTML = '<span class="log-error">请输入文章链接</span>';
-        return;
-    }
+    if (!url) { resultDiv.innerHTML = '<span style="color:var(--danger)">请输入文章链接</span>'; return; }
 
     resultDiv.innerHTML = '<div class="empty-state">⏳ 抓取分析中...</div>';
     addLog('🔗 开始抓取文章...', 'info');
@@ -411,78 +417,56 @@ async function cloneArticle() {
             body: JSON.stringify({ url }),
         });
         const data = await res.json();
+        if (data.error) { resultDiv.innerHTML = `<span style="color:var(--danger)">${data.error}</span>`; return; }
 
-        if (data.error) {
-            resultDiv.innerHTML = `<span class="log-error">${data.error}</span>`;
-            return;
-        }
-
-        const article = data.article;
-        const style = data.style;
-
+        const a = data.article, s = data.style;
         resultDiv.innerHTML = `
             <div class="clone-result-card">
-                <h4>${article.title}</h4>
-                <p class="hint">${article.platform} · ${article.author || '未知作者'}</p>
+                <h4>${a.title}</h4>
+                <p class="hint">${a.platform} · ${a.author || '未知作者'}</p>
                 <div class="style-tags">
-                    <span class="tag">标题: ${style.title_style}</span>
-                    <span class="tag">语气: ${style.tone}</span>
-                    <span class="tag">结构: ${style.structure}</span>
-                    ${style.has_emoji ? '<span class="tag">含Emoji</span>' : ''}
-                    ${style.has_hashtags ? '<span class="tag">含标签</span>' : ''}
+                    <span class="tag">标题: ${s.title_style}</span>
+                    <span class="tag">语气: ${s.tone}</span>
+                    <span class="tag">结构: ${s.structure}</span>
                 </div>
-                <p class="hint" style="margin-top: 8px;">${article.content.substring(0, 200)}...</p>
-                <button class="btn btn-primary" style="margin-top: 12px;" onclick="generateFromClone()">
-                    ✨ 基于此风格生成新内容
-                </button>
+                <p class="hint" style="margin-top:8px">${(a.content || '').substring(0, 150)}...</p>
+                <button class="btn btn-primary" style="margin-top:12px" onclick="generateFromClone()">✨ 基于此风格生成</button>
             </div>
         `;
-
-        // 存储复刻数据供后续使用
-        window._clonedArticle = article;
-        window._clonedStyle = style;
-
+        window._clonedArticle = a;
+        window._clonedStyle = s;
         addLog('✅ 文章分析完成', 'success');
     } catch (e) {
-        resultDiv.innerHTML = `<span class="log-error">抓取失败: ${e.message}</span>`;
-        addLog(`❌ 抓取失败: ${e.message}`, 'error');
+        resultDiv.innerHTML = `<span style="color:var(--danger)">抓取失败: ${e.message}</span>`;
     }
 }
 
 async function generateFromClone() {
     if (!window._clonedArticle) return;
-
-    const platforms = [];
-    document.querySelectorAll('.platform-tag input:checked').forEach(cb => {
-        platforms.push(cb.value);
-    });
+    const platforms = Array.from(document.querySelectorAll('#page-create .platform-tag input:checked')).map(cb => cb.value);
 
     addLog('✨ 基于复刻风格生成中...', 'info');
-
     try {
         const res = await fetch('/api/clone/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                article: window._clonedArticle,
-                style: window._clonedStyle,
-                count: 3,
-                platforms,
-            }),
+            body: JSON.stringify({ article: window._clonedArticle, style: window._clonedStyle, count: 3, platforms }),
         });
         const data = await res.json();
-
         if (data.results) {
-            for (const [platform, article] of Object.entries(data.results)) {
-                addLog(`✅ [${platform}] ${article.title}`, 'success');
-            }
-            // 填入第一个平台的内容到主题框
-            const firstPlatform = platforms[0];
-            if (data.results[firstPlatform]) {
-                document.getElementById('topicInput').value = data.results[firstPlatform].title;
+            for (const [p, a] of Object.entries(data.results)) {
+                addLog(`✅ [${p}] ${a.title}`, 'success');
             }
         }
     } catch (e) {
         addLog(`❌ 生成失败: ${e.message}`, 'error');
     }
+}
+
+/* ==================== 日志 ==================== */
+function addLog(text, type = 'info') {
+    const area = document.getElementById('logArea');
+    const time = new Date().toLocaleTimeString();
+    area.innerHTML += `<div class="log-item log-${type}"><span class="log-time">[${time}]</span>${text}</div>`;
+    area.scrollTop = area.scrollHeight;
 }

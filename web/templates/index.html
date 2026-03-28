@@ -15,94 +15,267 @@
                 <span class="subtitle">AI 写作 · 多平台分发</span>
             </div>
             <div class="header-right">
-                <button class="icon-btn" onclick="openSettings()">⚙️ 设置</button>
                 <div id="platformStatus" class="platform-status"></div>
             </div>
         </header>
 
-        <!-- 主内容 -->
-        <main class="main">
-            <!-- 左侧：创作面板 -->
-            <section class="panel">
-                <div class="card">
-                    <h2>📝 新建发布任务</h2>
-                    <div class="form-group">
-                        <label>文章主题</label>
-                        <textarea id="topicInput" placeholder="输入你想写的内容主题，例如：&#10;2024年最值得入手的5款机械键盘推荐"></textarea>
+        <!-- Tab 导航 -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" onclick="switchPage('hotspot')">🔥 热点资讯</button>
+            <button class="tab-btn" onclick="switchPage('create')">✍️ 内容创作</button>
+            <button class="tab-btn" onclick="switchPage('settings')">⚙️ 系统设置</button>
+        </nav>
+
+        <!-- ==================== 页面1：热点资讯 ==================== -->
+        <main class="page active" id="page-hotspot">
+            <div class="page-grid">
+                <!-- 左侧：热搜榜 -->
+                <section class="panel">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>🔥 全网热搜榜</h2>
+                            <div class="card-actions">
+                                <select id="hotspotSource" class="select-sm" onchange="loadHotspots()">
+                                    <option value="all">全部平台</option>
+                                    <option value="weibo">微博</option>
+                                    <option value="baidu">百度</option>
+                                    <option value="zhihu">知乎</option>
+                                    <option value="toutiao">头条</option>
+                                </select>
+                                <button class="btn btn-sm" onclick="loadHotspots()">🔄 刷新</button>
+                            </div>
+                        </div>
+                        <div id="hotspotList" class="hotspot-list">
+                            <div class="empty-state">点击刷新加载热点</div>
+                        </div>
                     </div>
-                    <div class="form-group">
-                        <label>目标平台</label>
-                        <div class="platform-selector">
-                            <label class="platform-tag" data-platform="xiaohongshu">
-                                <input type="checkbox" value="xiaohongshu" checked> 📕 小红书
-                            </label>
-                            <label class="platform-tag" data-platform="douyin">
-                                <input type="checkbox" value="douyin" checked> 🎵 抖音
-                            </label>
-                            <label class="platform-tag" data-platform="wechat">
-                                <input type="checkbox" value="wechat" checked> 💚 公众号
-                            </label>
-                            <label class="platform-tag" data-platform="kuaishou">
-                                <input type="checkbox" value="kuaishou"> 🔥 快手
-                            </label>
-                            <label class="platform-tag" data-platform="bilibili">
-                                <input type="checkbox" value="bilibili"> 📺 B站
-                            </label>
-                            <label class="platform-tag" data-platform="wechat_video">
-                                <input type="checkbox" value="wechat_video"> 📱 视频号
+                </section>
+
+                <!-- 右侧：分类资讯 -->
+                <section class="panel">
+                    <!-- AI 资讯 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>🤖 AI 资讯</h2>
+                            <button class="btn btn-sm" onclick="loadNews('ai')">🔄 刷新</button>
+                        </div>
+                        <div id="news-ai" class="news-list">
+                            <div class="empty-state">点击刷新加载</div>
+                        </div>
+                    </div>
+
+                    <!-- 财经资讯 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>💰 财经资讯</h2>
+                            <button class="btn btn-sm" onclick="loadNews('finance')">🔄 刷新</button>
+                        </div>
+                        <div id="news-finance" class="news-list">
+                            <div class="empty-state">点击刷新加载</div>
+                        </div>
+                    </div>
+
+                    <!-- 科技资讯 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>💻 科技资讯</h2>
+                            <button class="btn btn-sm" onclick="loadNews('tech')">🔄 刷新</button>
+                        </div>
+                        <div id="news-tech" class="news-list">
+                            <div class="empty-state">点击刷新加载</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- ==================== 页面2：内容创作 ==================== -->
+        <main class="page" id="page-create">
+            <div class="page-grid">
+                <section class="panel">
+                    <!-- 新建任务 -->
+                    <div class="card">
+                        <h2>✍️ 新建发布任务</h2>
+                        <div class="form-group">
+                            <label>文章主题</label>
+                            <textarea id="topicInput" placeholder="输入你想写的内容主题，或从热点榜点击一个热点自动填入"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label>目标平台</label>
+                            <div class="platform-selector">
+                                <label class="platform-tag" data-platform="xiaohongshu">
+                                    <input type="checkbox" value="xiaohongshu" checked> 📕 小红书
+                                </label>
+                                <label class="platform-tag" data-platform="douyin">
+                                    <input type="checkbox" value="douyin" checked> 🎵 抖音
+                                </label>
+                                <label class="platform-tag" data-platform="wechat">
+                                    <input type="checkbox" value="wechat" checked> 💚 公众号
+                                </label>
+                                <label class="platform-tag" data-platform="kuaishou">
+                                    <input type="checkbox" value="kuaishou"> 🔥 快手
+                                </label>
+                                <label class="platform-tag" data-platform="bilibili">
+                                    <input type="checkbox" value="bilibili"> 📺 B站
+                                </label>
+                                <label class="platform-tag" data-platform="wechat_video">
+                                    <input type="checkbox" value="wechat_video"> 📱 视频号
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- 高级选项 -->
+                        <div class="advanced-section">
+                            <button class="toggle-advanced" onclick="toggleAdvanced()">
+                                ⚙️ 高级选项 <span id="advancedArrow">▼</span>
+                            </button>
+                            <div id="advancedPanel" class="advanced-panel hidden">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="featureAiArticle" checked> 🤖 AI 写文章
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="featureAiImage" checked> 🎨 AI 配图
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="featureAiFormatting" checked> 📐 自动排版
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button class="btn btn-primary" onclick="startTask()">🚀 开始生成</button>
+                            <label class="auto-toggle">
+                                <input type="checkbox" id="autoPublish"> 跳过审核直接发布
                             </label>
                         </div>
                     </div>
-                    <div class="form-actions">
-                        <button id="publishBtn" class="btn btn-primary" onclick="startTask()">
-                            🚀 开始生成
-                        </button>
-                        <label class="auto-toggle">
-                            <input type="checkbox" id="autoPublish"> 跳过审核直接发布
+
+                    <!-- 文章复刻 -->
+                    <div class="card">
+                        <h2>🔗 文章复刻</h2>
+                        <p class="hint">粘贴文章链接，AI 自动分析风格并生成同类内容</p>
+                        <div class="form-group" style="margin-top: 12px;">
+                            <input type="text" id="cloneUrl" placeholder="粘贴小红书/公众号/抖音文章链接..." class="form-input">
+                        </div>
+                        <button class="btn btn-secondary" onclick="cloneArticle()">📋 抓取分析</button>
+                        <div id="cloneResult" style="margin-top: 12px;"></div>
+                    </div>
+                </section>
+
+                <!-- 右侧：日志 + 任务 -->
+                <section class="panel">
+                    <div class="card">
+                        <h2>📋 执行日志</h2>
+                        <div id="logArea" class="log-area">
+                            <div class="log-item log-info">系统就绪，等待任务...</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <h2>📊 任务历史</h2>
+                        <div id="taskList" class="task-list">
+                            <div class="empty-state">暂无任务</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- ==================== 页面3：系统设置 ==================== -->
+        <main class="page" id="page-settings">
+            <div class="settings-grid">
+                <!-- AI 大模型配置 -->
+                <div class="card">
+                    <h2>🤖 AI 大模型配置</h2>
+                    <div class="form-group">
+                        <label>AI 服务商</label>
+                        <select id="aiProvider" class="form-input">
+                            <option value="openai">OpenAI (GPT)</option>
+                            <option value="claude">Anthropic (Claude)</option>
+                            <option value="qwen">通义千问</option>
+                            <option value="glm">智谱 (GLM)</option>
+                            <option value="deepseek">DeepSeek</option>
+                            <option value="custom">自定义</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="aiApiKey" class="form-input" placeholder="sk-...">
+                    </div>
+                    <div class="form-group">
+                        <label>API Base URL</label>
+                        <input type="text" id="aiBaseUrl" class="form-input" placeholder="https://api.openai.com/v1">
+                    </div>
+                    <div class="form-group">
+                        <label>模型名称</label>
+                        <input type="text" id="aiModel" class="form-input" placeholder="gpt-4o">
+                    </div>
+                    <div class="form-group">
+                        <label>Temperature</label>
+                        <input type="range" id="aiTemp" min="0" max="2" step="0.1" value="0.7">
+                        <span id="aiTempVal">0.7</span>
+                    </div>
+                </div>
+
+                <!-- 图片生成配置 -->
+                <div class="card">
+                    <h2>🎨 图片生成配置</h2>
+                    <div class="form-group">
+                        <label>图片生成服务</label>
+                        <select id="imgProvider" class="form-input">
+                            <option value="dall-e">DALL·E</option>
+                            <option value="sd">Stable Diffusion</option>
+                            <option value="flux">Flux</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>API Key</label>
+                        <input type="password" id="imgApiKey" class="form-input" placeholder="sk-...">
+                    </div>
+                    <div class="form-group">
+                        <label>API Base URL</label>
+                        <input type="text" id="imgBaseUrl" class="form-input" placeholder="https://api.openai.com/v1">
+                    </div>
+                    <div class="form-group">
+                        <label>图片尺寸</label>
+                        <select id="imgSize" class="form-input">
+                            <option value="1024x1024">1024×1024 (正方形)</option>
+                            <option value="1024x1792">1024×1792 (竖版)</option>
+                            <option value="1792x1024">1792×1024 (横版)</option>
+                        </select>
+                    </div>
+                    <div style="margin-top: 16px;">
+                        <button class="btn btn-secondary" onclick="testConnection()">🔌 测试连接</button>
+                    </div>
+                </div>
+
+                <!-- 平台管理 -->
+                <div class="card">
+                    <h2>📱 平台管理</h2>
+                    <div id="platformSettings"></div>
+                </div>
+
+                <!-- 发布策略 -->
+                <div class="card">
+                    <h2>📋 发布策略</h2>
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="reviewBefore"> 发布前人工审核
                         </label>
                     </div>
-                </div>
-
-                <!-- 🔥 热点榜 -->
-                <div class="card">
-                    <div class="card-header">
-                        <h2>🔥 实时热点</h2>
-                        <button class="btn btn-sm" onclick="loadHotspots()">🔄 刷新</button>
+                    <div class="form-group">
+                        <label>每日最大发布数</label>
+                        <input type="number" id="maxDaily" class="form-input" min="1" max="50" value="3">
                     </div>
-                    <div id="hotspotList" class="hotspot-list">
-                        <div class="empty-state">点击刷新加载热点</div>
+                    <div class="form-group">
+                        <label>发布间隔（分钟）</label>
+                        <input type="number" id="intervalMin" class="form-input" min="1" max="1440" value="60">
                     </div>
-                </div>
-
-                <!-- 🔗 文章复刻 -->
-                <div class="card">
-                    <h2>🔗 文章复刻</h2>
-                    <p class="hint">粘贴文章链接，AI 自动分析风格并生成同类内容</p>
-                    <div class="form-group" style="margin-top: 12px;">
-                        <input type="text" id="cloneUrl" placeholder="粘贴小红书/公众号/抖音文章链接..." class="form-input">
-                    </div>
-                    <button class="btn btn-secondary" onclick="cloneArticle()" style="margin-top: 8px;">📋 抓取分析</button>
-                    <div id="cloneResult" style="margin-top: 12px;"></div>
-                </div>
-
-                <!-- 实时日志 -->
-                <div class="card">
-                    <h2>📋 执行日志</h2>
-                    <div id="logArea" class="log-area">
-                        <div class="log-item log-info">系统就绪，等待任务...</div>
+                    <div style="margin-top: 16px;">
+                        <button class="btn btn-primary" onclick="saveSettings()">💾 保存设置</button>
                     </div>
                 </div>
-            </section>
-
-            <!-- 右侧：任务列表 -->
-            <section class="panel">
-                <div class="card">
-                    <h2>📊 任务历史</h2>
-                    <div id="taskList" class="task-list">
-                        <div class="empty-state">暂无任务</div>
-                    </div>
-                </div>
-            </section>
+            </div>
         </main>
 
         <!-- 审核弹窗 -->
@@ -117,107 +290,6 @@
                 <div class="modal-footer">
                     <button class="btn btn-secondary" onclick="closeModal()">取消</button>
                     <button class="btn btn-primary" onclick="approvePublish()">✅ 确认发布</button>
-                </div>
-            </div>
-        </div>
-
-        <!-- 设置弹窗 -->
-        <div id="settingsModal" class="modal hidden">
-            <div class="modal-overlay" onclick="closeSettings()"></div>
-            <div class="modal-content settings-modal">
-                <div class="modal-header">
-                    <h2>⚙️ 系统设置</h2>
-                    <button class="close-btn" onclick="closeSettings()">✕</button>
-                </div>
-                <div class="settings-tabs">
-                    <button class="tab-btn active" data-tab="ai" onclick="switchTab('ai')">AI 配置</button>
-                    <button class="tab-btn" data-tab="platform" onclick="switchTab('platform')">平台账号</button>
-                    <button class="tab-btn" data-tab="publish" onclick="switchTab('publish')">发布策略</button>
-                </div>
-                <div class="modal-body settings-body">
-                    <!-- AI 配置 -->
-                    <div id="tab-ai" class="tab-content active">
-                        <div class="form-group">
-                            <label>AI 提供商</label>
-                            <select id="aiProvider" class="form-input">
-                                <option value="openai">OpenAI</option>
-                                <option value="deepseek">DeepSeek</option>
-                                <option value="qwen">通义千问 (Qwen)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>API Key</label>
-                            <input type="password" id="aiApiKey" class="form-input" placeholder="sk-...">
-                        </div>
-                        <div class="form-group">
-                            <label>Base URL</label>
-                            <input type="text" id="aiBaseUrl" class="form-input" placeholder="https://api.openai.com/v1">
-                        </div>
-                        <div class="form-group">
-                            <label>Model</label>
-                            <input type="text" id="aiModel" class="form-input" placeholder="gpt-4o">
-                        </div>
-                        <div class="form-group">
-                            <label>Temperature</label>
-                            <input type="number" id="aiTemperature" class="form-input" min="0" max="2" step="0.1" value="0.7">
-                        </div>
-                    </div>
-
-                    <!-- 平台账号 -->
-                    <div id="tab-platform" class="tab-content">
-                        <div class="platform-card">
-                            <h3>📕 小红书</h3>
-                            <div id="platform-xiaohongshu-status" class="platform-login-status">未登录</div>
-                            <button class="btn btn-primary" onclick="loginPlatform('xiaohongshu')">🔐 扫码登录</button>
-                        </div>
-                        <div class="platform-card">
-                            <h3>🎵 抖音</h3>
-                            <div id="platform-douyin-status" class="platform-login-status">未登录</div>
-                            <button class="btn btn-primary" onclick="loginPlatform('douyin')">🔐 扫码登录</button>
-                        </div>
-                        <div class="platform-card">
-                            <h3>💚 微信公众号</h3>
-                            <div id="platform-wechat-status" class="platform-login-status">未登录</div>
-                            <button class="btn btn-primary" onclick="loginPlatform('wechat')">🔐 扫码登录</button>
-                        </div>
-                        <div class="platform-card">
-                            <h3>🔥 快手</h3>
-                            <div id="platform-kuaishou-status" class="platform-login-status">未登录</div>
-                            <button class="btn btn-primary" onclick="loginPlatform('kuaishou')">🔐 扫码登录</button>
-                        </div>
-                        <div class="platform-card">
-                            <h3>📺 B站</h3>
-                            <div id="platform-bilibili-status" class="platform-login-status">未登录</div>
-                            <button class="btn btn-primary" onclick="loginPlatform('bilibili')">🔐 扫码登录</button>
-                        </div>
-                        <div class="platform-card">
-                            <h3>📱 微信视频号</h3>
-                            <div id="platform-wechat_video-status" class="platform-login-status">未登录</div>
-                            <button class="btn btn-primary" onclick="loginPlatform('wechat_video')">🔐 扫码登录</button>
-                        </div>
-                    </div>
-
-                    <!-- 发布策略 -->
-                    <div id="tab-publish" class="tab-content">
-                        <div class="form-group">
-                            <label>
-                                <input type="checkbox" id="reviewBeforePublish" checked>
-                                发布前人工审核
-                            </label>
-                        </div>
-                        <div class="form-group">
-                            <label>每日最大发布数</label>
-                            <input type="number" id="maxDailyPosts" class="form-input" min="1" max="50" value="3">
-                        </div>
-                        <div class="form-group">
-                            <label>发布间隔（分钟）</label>
-                            <input type="number" id="intervalMinutes" class="form-input" min="1" max="1440" value="60">
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="closeSettings()">取消</button>
-                    <button class="btn btn-primary" onclick="saveSettings()">💾 保存配置</button>
                 </div>
             </div>
         </div>
