@@ -352,11 +352,17 @@ async def publish_task(task_id: str):
         from publishers.xiaohongshu import XiaohongshuPublisher
         from publishers.douyin import DouyinPublisher
         from publishers.wechat import WechatPublisher
+        from publishers.kuaishou import KuaishouPublisher
+        from publishers.bilibili import BilibiliPublisher
+        from publishers.wechat_video import WechatVideoPublisher
 
         publisher_map = {
             "xiaohongshu": XiaohongshuPublisher,
             "douyin": DouyinPublisher,
             "wechat": WechatPublisher,
+            "kuaishou": KuaishouPublisher,
+            "bilibili": BilibiliPublisher,
+            "wechat_video": WechatVideoPublisher,
         }
 
         platforms = task["platforms"]
