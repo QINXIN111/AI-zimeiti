@@ -285,7 +285,7 @@ async def api_drafts():
 # ==================== 热点采集 ====================
 
 @app.get("/api/hotspots")
-async def api_hotspots(sources: str = "weibo,zhihu,baidu"):
+async def api_hotspots(sources: str = "weibo,baidu,toutiao"):
     """获取实时热点列表"""
     import sys
     sys.path.insert(0, str(ROOT_DIR))

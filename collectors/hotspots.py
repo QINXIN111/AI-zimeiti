@@ -1,23 +1,31 @@
-"""热点采集模块 - 使用 Playwright 抓取各平台热搜榜"""
+"""热点采集模块 - HTTP API + Playwright 混合模式
+
+优先使用免费的 HTTP API，失败时降级到 Playwright。
+"""
 
 import re
 import time
+import json
+import requests
 from datetime import datetime
 
 
 class HotspotCollector:
-    """多平台热点采集器（Playwright 页面抓取）"""
+    """多平台热点采集器（API + Playwright 混合）"""
+
+    def __init__(self, use_fallback: bool = True):
+        self.use_fallback = use_fallback  # API 失败时是否降级到 Playwright
 
     def collect_all(self, sources: list[str] = None) -> list[dict]:
         """采集所有来源的热点"""
         if sources is None:
-            sources = ["weibo", "zhihu", "baidu"]
+            sources = ["weibo", "baidu", "toutiao"]
 
         all_hotspots = []
         collectors = {
-            "weibo": self.collect_weibo,
-            "toutiao": self.collect_toutiao,  # 替代知乎
-            "baidu": self.collect_baidu,
+            "weibo": self.collect_weibo_api,
+            "baidu": self.collect_baidu_playwright,
+            "toutiao": self.collect_toutiao_playwright,
         }
 
         for source in sources:
@@ -41,6 +49,56 @@ class HotspotCollector:
 
         return unique
 
+    # ==================== 微博 API 方案 ====================
+
+    def collect_weibo_api(self) -> list[dict]:
+        """使用 ALAPI 微博热搜接口（需要 token）"""
+        try:
+            token = "LwExDtUWhF3rH5ib"  # free-api.com 获取
+            url = "https://v2.alapi.cn/api/new/wbtop"
+            params = {
+                "token": token,
+                "num": 30  # 返回条数
+            }
+
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code != 200:
+                raise Exception(f"API 返回 {response.status_code}")
+
+            data = response.json()
+            if not data.get("success"):
+                raise Exception(f"API 错误: {data.get('message')}")
+
+            items = data.get("data", [])
+
+            hotspots = []
+            for item in items[:30]:
+                try:
+                    title = item.get("hot_word", "")
+                    heat = item.get("hot_num", 0)
+                    url = item.get("url", "")
+                    if title:
+                        hotspots.append({
+                            "title": title,
+                            "url": url,
+                            "source": "微博",
+                            "heat": str(heat) if heat else "0",
+                            "category": "综合",
+                            "time": datetime.now().strftime("%H:%M"),
+                        })
+                except:
+                    continue
+
+            return hotspots
+
+        except Exception as e:
+            if self.use_fallback:
+                print(f"[微博] API 失败，降级到 Playwright: {e}")
+                return self.collect_weibo_playwright()
+            raise
+
+    # ==================== Playwright 方案 ====================
+
     def _start_browser(self):
         from playwright.sync_api import sync_playwright
         self.pw = sync_playwright().start()
@@ -59,13 +117,18 @@ class HotspotCollector:
         except:
             pass
 
-    def collect_weibo(self) -> list[dict]:
-        """使用 Playwright 抓取微博热搜"""
+    def collect_weibo_playwright(self) -> list[dict]:
+        """使用 Playwright 抓取微博热搜（备用方案）"""
         self._start_browser()
         try:
             page = self.context.new_page()
-            page.goto("https://s.weibo.com/top/summary", wait_until="domcontentloaded", timeout=20000)
-            time.sleep(3)
+            page.goto("https://s.weibo.com/top/summary", wait_until="domcontentloaded", timeout=30000)
+            time.sleep(8)
+
+            # 检查是否被跳转到登录页
+            if "visitor" in page.url or "passport" in page.url:
+                print(f"[微博] 页面需要登录或验证，URL: {page.url}")
+                return []
 
             hotspots = []
             rows = page.locator("table tbody tr").all()
@@ -91,39 +154,7 @@ class HotspotCollector:
         finally:
             self._stop_browser()
 
-    def collect_toutiao(self) -> list[dict]:
-        """使用 Playwright 抓取今日头条热榜"""
-        self._start_browser()
-        try:
-            page = self.context.new_page()
-            page.goto("https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc",
-                      wait_until="networkidle", timeout=15000)
-            time.sleep(2)
-
-            hotspots = []
-            import json
-            body_text = page.inner_text("body")
-            data = json.loads(body_text)
-            items = data.get("data", data) if isinstance(data, dict) else data
-            for item in items[:30]:
-                title = item.get("Title", "")
-                url = item.get("Url", "")
-                hot_value = item.get("HotValue", 0)
-                label = item.get("Label", "综合")
-                if title:
-                    hotspots.append({
-                        "title": title,
-                        "url": url if url.startswith("http") else f"https://www.toutiao.com{url}",
-                        "source": "头条",
-                        "heat": str(hot_value),
-                        "category": label or "综合",
-                        "time": datetime.now().strftime("%H:%M"),
-                    })
-            return hotspots
-        finally:
-            self._stop_browser()
-
-    def collect_baidu(self) -> list[dict]:
+    def collect_baidu_playwright(self) -> list[dict]:
         """使用 Playwright 抓取百度热搜"""
         self._start_browser()
         try:
@@ -155,9 +186,43 @@ class HotspotCollector:
         finally:
             self._stop_browser()
 
+    def collect_toutiao_playwright(self) -> list[dict]:
+        """使用 Playwright 抓取今日头条热榜"""
+        self._start_browser()
+        try:
+            page = self.context.new_page()
+            page.goto("https://www.toutiao.com/hot-event/hot-board/?origin=toutiao_pc",
+                      wait_until="networkidle", timeout=15000)
+            time.sleep(2)
+
+            hotspots = []
+            body_text = page.inner_text("body")
+            data = json.loads(body_text)
+            items = data.get("data", data) if isinstance(data, dict) else data
+            for item in items[:30]:
+                title = item.get("Title", "")
+                url = item.get("Url", "")
+                hot_value = item.get("HotValue", 0)
+                label = item.get("Label", "综合")
+                if title:
+                    hotspots.append({
+                        "title": title,
+                        "url": url if url.startswith("http") else f"https://www.toutiao.com{url}",
+                        "source": "头条",
+                        "heat": str(hot_value),
+                        "category": label or "综合",
+                        "time": datetime.now().strftime("%H:%M"),
+                    })
+            return hotspots
+        except Exception as e:
+            print(f"[头条] 解析失败: {e}")
+            return []
+        finally:
+            self._stop_browser()
+
 
 def format_hotspots_for_display(hotspots: list[dict], limit: int = 20) -> str:
     lines = []
     for i, h in enumerate(hotspots[:limit], 1):
-        lines.append(f"{i}. {h['title']} [{h['source']}] 🔥{h['heat']}")
+        lines.append(f"{i}. {h['title']} [{h['source']}] 热度:{h['heat']}")
     return "\n".join(lines)
