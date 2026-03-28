@@ -40,11 +40,14 @@ class WechatPublisher(BasePublisher):
             editor = self.page.locator('#ueditor_0, .rich_media_content, .note-editor').first
             editor.click()
 
-            # 输入正文内容（使用剪贴板粘贴，兼容富文本编辑器）
-            self.page.evaluate(f"""
-                document.querySelector('#ueditor_0, .rich_media_content, .note-editor')
-                    .innerHTML = {repr(content)};
-            """)
+            # 输入正文内容（使用参数传递，避免字符串拼接导致 JS 注入）
+            self.page.evaluate(
+                """(content) => {
+                    const el = document.querySelector('#ueditor_0, .rich_media_content, .note-editor');
+                    if (el) el.innerHTML = content;
+                }""",
+                content,
+            )
             time.sleep(1)
 
             # 上传封面图

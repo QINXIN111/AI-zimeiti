@@ -73,8 +73,18 @@ class ArticleGenerator:
         return json.loads(raw)
 
     def generate_batch(self, topic: str, platforms: list[str]) -> dict[str, dict]:
-        """为多个平台批量生成文章"""
+        """为多个平台批量生成文章，单平台失败不影响其他平台"""
         results = {}
         for platform in platforms:
-            results[platform] = self.generate(topic, platform)
+            try:
+                results[platform] = self.generate(topic, platform)
+            except Exception as e:
+                print(f"[article] [{platform}] 生成失败: {e}")
+                results[platform] = {
+                    "title": f"【{topic}】",
+                    "content": "",
+                    "tags": [],
+                    "image_prompt": topic,
+                    "_error": str(e),
+                }
         return results

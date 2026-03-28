@@ -1,9 +1,11 @@
 """自媒体助手 - 可视化 Web 管理平台"""
 
+import asyncio
 import json
 import os
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -12,6 +14,9 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+
+# 线程池，用于执行同步阻塞的 Playwright 操作
+_executor = ThreadPoolExecutor(max_workers=3)
 
 # 项目根目录
 ROOT_DIR = Path(__file__).parent.parent
@@ -122,7 +127,6 @@ async def api_publish(request: Request):
     }
 
     # 异步执行任务
-    import asyncio
     asyncio.create_task(run_task(task_id, topic, platforms, auto))
 
     return {"task_id": task_id, "status": "started"}
@@ -155,7 +159,6 @@ async def api_task_approve(task_id: str, request: Request):
     task["status"] = "publishing"
     await broadcast({"type": "task_update", "task": task})
 
-    import asyncio
     asyncio.create_task(publish_task(task_id))
 
     return {"status": "publishing"}
@@ -198,6 +201,8 @@ async def run_task(task_id: str, topic: str, platforms: list, auto: bool):
         platforms = [name for name, cfg in config.get("platforms", {}).items() if cfg.get("enabled", True)]
         task["platforms"] = platforms
 
+    loop = asyncio.get_event_loop()
+
     try:
         # 导入生成模块
         import sys
@@ -205,22 +210,28 @@ async def run_task(task_id: str, topic: str, platforms: list, auto: bool):
         from generators.article import ArticleGenerator
         from generators.image import ImageGenerator
 
-        # 生成文章
+        # 生成文章（阻塞 IO，丢到线程池）
         await broadcast({"type": "status", "task_id": task_id, "message": "✍️ 正在生成文章..."})
         article_gen = ArticleGenerator(config)
-        articles = article_gen.generate_batch(topic, platforms)
+        loop = asyncio.get_event_loop()
+        articles = await loop.run_in_executor(
+            _executor, lambda: article_gen.generate_batch(topic, platforms)
+        )
         task["articles"] = articles
 
         await broadcast({"type": "task_update", "task": task})
 
-        # 生成配图
+        # 生成配图（阻塞 IO，丢到线程池）
         await broadcast({"type": "status", "task_id": task_id, "message": "🎨 正在生成配图..."})
         img_gen = ImageGenerator(config)
         for platform in platforms:
             article = articles.get(platform, {})
             img_prompt = article.get("image_prompt", topic)
             try:
-                img_path = img_gen.generate(img_prompt, f"{platform}_{int(time.time())}.png")
+                img_path = await loop.run_in_executor(
+                    _executor,
+                    lambda ip=img_prompt, pl=platform: img_gen.generate(ip, f"{pl}_{int(time.time())}.png"),
+                )
                 task["images"][platform] = img_path
             except Exception as e:
                 task["images"][platform] = None
@@ -270,12 +281,18 @@ async def publish_task(task_id: str):
 
             article = task["articles"].get(platform, {})
             publisher = publisher_cls(config)
+
+            # 用线程池执行同步阻塞的 Playwright 操作，避免阻塞事件循环
+            loop = asyncio.get_event_loop()
             try:
-                success = publisher.publish(
-                    title=article.get("title", ""),
-                    content=article.get("content", ""),
-                    image_path=task["images"].get(platform),
-                    tags=article.get("tags"),
+                success = await loop.run_in_executor(
+                    _executor,
+                    lambda p=publisher, a=article, t=task, pl=platform: p.publish(
+                        title=a.get("title", ""),
+                        content=a.get("content", ""),
+                        image_path=t["images"].get(pl),
+                        tags=a.get("tags"),
+                    ),
                 )
                 task["results"][platform] = {"success": success}
             except Exception as e:

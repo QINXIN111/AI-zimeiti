@@ -26,6 +26,15 @@ PUBLISHERS = {
 
 
 def load_config(path: str = "config/settings.yaml") -> dict:
+    if not os.path.exists(path):
+        example = path + ".example"
+        if os.path.exists(example):
+            raise FileNotFoundError(
+                f"配置文件 {path} 不存在。\n"
+                f"请先执行：cp {example} {path}\n"
+                f"然后填写真实的 API Key 和平台 cookies 路径。"
+            )
+        raise FileNotFoundError(f"配置文件 {path} 不存在，且未找到示例文件 {example}。")
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 

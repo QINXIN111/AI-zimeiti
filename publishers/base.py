@@ -39,8 +39,8 @@ class BasePublisher(ABC):
 
     def start_browser(self):
         """启动浏览器"""
-        pw = sync_playwright().start()
-        self.browser = pw.chromium.launch(headless=self.headless)
+        self._pw = sync_playwright().start()
+        self.browser = self._pw.chromium.launch(headless=self.headless)
         context = self.browser.new_context(
             viewport={"width": 1280, "height": 720},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -55,6 +55,11 @@ class BasePublisher(ABC):
             context = self.page.context
             self._save_cookies(context)
             self.browser.close()
+            self.browser = None
+        # 停止 Playwright 进程，避免泄漏
+        if hasattr(self, "_pw") and self._pw:
+            self._pw.stop()
+            self._pw = None
 
     @abstractmethod
     def publish(self, title: str, content: str, image_path: str = None, tags: list = None) -> bool:
